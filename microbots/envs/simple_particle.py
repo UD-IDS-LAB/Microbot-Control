@@ -98,15 +98,22 @@ class SimpleParticle(gym.Env):
                                  np.array([stateBounds[0], stateBounds[2]]), #LB
                                  np.array([stateBounds[1], stateBounds[3]]), #UB
                                  dtype=np.float32)
-
+        
 
 
     def reset(self):
         # Reset the state of the environment to an initial state
-        self.states = np.random.default_rng().uniform(low=-1.0, high=1.0, size=self.numParticles*4)
-        self.states[0:2] = (self.states[0:2] + 1) / 2 * (self.stateBounds[1] - self.stateBounds[0]) + self.stateBounds[0]
-        self.states[0:2] *= 0.4 #start within 40% of the origin
-                
+        
+        #### set the state randomly within +- 40% of the bounds
+        #self.states = np.random.default_rng().uniform(low=-1.0, high=1.0, size=self.numParticles*4)
+        #self.states[0:2] = (self.states[0:2] + 1) / 2 * (self.stateBounds[1] - self.stateBounds[0]) + self.stateBounds[0]
+        #self.states[0:2] *= 0.4 #start within 40% of the origin
+         
+        #### set the state to a fixed point
+        self.states = np.array([self.stateBounds[0], self.stateBounds[0], self.stateBounds[3], self.stateBounds[3]])
+        self.states[0:2] *= 0.4; #scale position to be 40% of max distance
+        
+        
         # Convert to a 32 bit float to play nice with the pytorch tensors
         self.states = self.states.astype('float32')
         self.currentStep = 0

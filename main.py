@@ -204,11 +204,12 @@ def optimize_model():
 #render_mode = 'None' --- shows nothing
 #render_mode = 'live' --- shows plot
 render_mode = 'None'
-num_episodes = 1000000
+num_episodes = 10
 episode_durations = [] #store how long episodes are lasting
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     env.reset()
+    env.render(mode=render_mode)
     state = env._next_observation()
     for t in count():
         # Select and perform an action
