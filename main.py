@@ -206,6 +206,7 @@ def optimize_model():
 render_mode = 'None'
 num_episodes = 1000000
 episode_durations = [] #store how long episodes are lasting
+
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     env.reset()

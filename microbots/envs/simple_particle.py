@@ -78,8 +78,19 @@ class ParticlePlot:
 
 class SimpleParticle(gym.Env):
     """The simple particle model adapted to use opengym"""
+    """SimpleParticle Environment follows gym interface"""
+    
     metadata = {'render.modes': ['human']}
+    reward_range = (-float('inf'), float('inf'))
+    spec = None
+    
+    viewer = None
 
+    # Environment Parameters
+    low = np.array([-10, -10, -5, -5]]) # state lower limit
+    high = np.array([10, 10, 5, 5]]) # state higher limit
+    STATE_SIZE = 4
+    ACTION_SIZE = 4  
 
     def __init__(self, numParticles, phi, stateBounds, dwellTime, maxSteps):
         super(SimpleParticle, self).__init__()  
@@ -98,52 +109,6 @@ class SimpleParticle(gym.Env):
                                  np.array([stateBounds[0], stateBounds[2]]), #LB
                                  np.array([stateBounds[1], stateBounds[3]]), #UB
                                  dtype=np.float32)
-
-
-
-    def reset(self):
-        # Reset the state of the environment to an initial state
-        self.states = np.random.default_rng().uniform(low=-1.0, high=1.0, size=self.numParticles*4)
-        self.states[0:2] = (self.states[0:2] + 1) / 2 * (self.stateBounds[1] - self.stateBounds[0]) + self.stateBounds[0]
-        self.states[0:2] *= 0.4 #start within 40% of the origin
-                
-        # Convert to a 32 bit float to play nice with the pytorch tensors
-        self.states = self.states.astype('float32')
-        self.currentStep = 0
-        if self.visualization != None:
-            self.visualization.reset()
-
-
-    def _next_observation(self):
-        #observe the current state of the particles
-        obs = self.states;
-        return obs
-
-    #update particle states based on the current action & dynamics
-    def _take_action(self, action):
-        #calculate the velocity (v=vmax always)
-        vMax = self.stateBounds[3];
-        #determine how the agent would move if the offset was 0
-        v = np.array([ [vMax], [0] ]) #assume to the right (action = 0)
-        if action == 1: #up
-            v = np.array([ [0], [vMax] ])
-        if action == 2: #left
-            v = np.array([ [-vMax], [0] ])
-        if action == 3: #down
-            v = np.array([ [0], [-vMax] ])
-
-            
-        #calculate the rotation of the particle
-        c, s = np.cos(self.phi), np.sin(self.phi)
-        R    = np.array( [[c, -s], [s, c]] )
-        #rotate u by angle phi (particle offset)
-        v = np.matmul(R, v)
-        #do the dynamics
-        position = self.states[:2] + np.transpose(v * self.dwellTime)
-        self.states = np.append(position, v)        
-        self.states = self.states.astype('float32')
-        
-
 
     def step(self, action):
         # Execute one time step within the environment
@@ -185,7 +150,6 @@ class SimpleParticle(gym.Env):
         #reward the agent by -1 * dist from origin
         reward = -dist
         
-        
         #penalize the agent by 1,000 if it exits the state bounds
         if xf < self.stateBounds[0] or xf > self.stateBounds[1] or yf < self.stateBounds[0] or yf > self.stateBounds[1]:
                 reward -= 1000;
@@ -196,12 +160,69 @@ class SimpleParticle(gym.Env):
         #finish if we are within 0.01 microns of the goal
         done = done or (dist < 0.01)
                 
-        newState = self.states
-    
+        next_state = self.states
+
+        info = None
     
         #return state, reward, done, next state
-        return self.states, reward, done, newState 
+        # return self.states, reward, done, newState 
+
+        # cmb return observation, reward, done, info --------------------------------------------------------
+        return next_state, reward, done, info 
     
+    def reset(self):
+        # Reset the state of the environment to an initial state
+        self.states = np.random.default_rng().uniform(low=-1.0, high=1.0, size=self.numParticles*4)
+        
+        # Single Point initialiation
+        # 4 quarter 
+
+        self.states[0:2] = (self.states[0:2] + 1) / 2 * (self.stateBounds[1] - self.stateBounds[0]) + self.stateBounds[0]
+        self.states[0:2] *= 0.4 #start within 40% of the origin
+                
+        # Convert to a 32 bit float to play nice with the pytorch tensors
+        self.states = self.states.astype('float32')
+        self.currentStep = 0
+
+        # Visualization
+        if self.visualization != None:
+            self.visualization.reset()
+
+        # cmb return observation ---------------------------------------------------------------- 
+        state = np.concatenate((self.states[0], 
+                                self.states[1], 
+                                self.states[2], 
+                                self.states[3]), axis=None)
+        return state
+
+    def _next_observation(self):
+        #observe the current state of the particles
+        obs = self.states;
+        return obs
+
+    #update particle states based on the current action & dynamics
+    def _take_action(self, action):
+        #calculate the velocity (v=vmax always)
+        vMax = self.stateBounds[3];
+        #determine how the agent would move if the offset was 0
+        v = np.array([ [vMax], [0] ]) #assume to the right (action = 0)
+        if action == 1: #up
+            v = np.array([ [0], [vMax] ])
+        if action == 2: #left
+            v = np.array([ [-vMax], [0] ])
+        if action == 3: #down
+            v = np.array([ [0], [-vMax] ])
+
+            
+        #calculate the rotation of the particle
+        c, s = np.cos(self.phi), np.sin(self.phi)
+        R    = np.array( [[c, -s], [s, c]] )
+        #rotate u by angle phi (particle offset)
+        v = np.matmul(R, v)
+        #do the dynamics
+        position = self.states[:2] + np.transpose(v * self.dwellTime)
+        self.states = np.append(position, v)        
+        self.states = self.states.astype('float32')
 
     def _render_to_file(self, filename='data'):
         # Append the current run to filename (default data.csv)
@@ -210,7 +231,6 @@ class SimpleParticle(gym.Env):
         file.write(self.dwellTime * self.step, ",", self.states)
         
         file.close()
-
 
     def render(self, mode='live', title=None, **kwargs):
         # Render the environment to the screen or a file
@@ -223,8 +243,7 @@ class SimpleParticle(gym.Env):
                 
             #scale rendering to the state bounds instead of [-1, 1] in each dim
             self.visualization.render(self.states)
-        
-        
+               
     def close(self):
         super().close()
         
