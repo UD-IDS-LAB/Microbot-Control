@@ -18,6 +18,11 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+# env_closer = closer.Closer()
+low = np.array([-10, -10, -5, -5]) # state lower limit
+high = np.array([10, 10, 5, 5]) # state higher limit
+STATE_SIZE = 4
+ACTION_SIZE = 4  
 
 class ParticlePlot:
     
@@ -84,13 +89,13 @@ class SimpleParticle(gym.Env):
     reward_range = (-float('inf'), float('inf'))
     spec = None
     
-    viewer = None
+    # viewer = None
 
     # Environment Parameters
-    low = np.array([-10, -10, -5, -5]]) # state lower limit
-    high = np.array([10, 10, 5, 5]]) # state higher limit
-    STATE_SIZE = 4
-    ACTION_SIZE = 4  
+    low = np.array([-10, -10, -5, -5]) # state lower limit
+    high = np.array([10, 10, 5, 5]) # state higher limit
+    state_size = STATE_SIZE
+    action_size = ACTION_SIZE  
 
     def __init__(self, numParticles, phi, stateBounds, dwellTime, maxSteps):
         super(SimpleParticle, self).__init__()  
@@ -102,17 +107,25 @@ class SimpleParticle(gym.Env):
         self.maxSteps = maxSteps
         
         #action space is 4 discrete values (right, up, left, down)
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Discrete(ACTION_SIZE)
         
         #observation space is 4 x numParticles
-        self.observation_space = spaces.Box(
-                                 np.array([stateBounds[0], stateBounds[2]]), #LB
-                                 np.array([stateBounds[1], stateBounds[3]]), #UB
-                                 dtype=np.float32)
+        # self.observation_space = spaces.Box(
+        #                          np.array([stateBounds[0], stateBounds[2]]), #LB
+        #                          np.array([stateBounds[1], stateBounds[3]]), #UB
+        #                          dtype=np.float32)
+
+        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+
+    def _next_observation(self):
+        #observe the current state of the particles
+        obs = self.states;
+        return obs
+
 
     def step(self, action):
         # Execute one time step within the environment
-        self.old_states = self.states
+        self.old_states = self.states;
         self._take_action(action)
         self.currentStep += 1 #we just advanced by one dwellTime
         
@@ -145,29 +158,31 @@ class SimpleParticle(gym.Env):
                 m = dy / dx
                 x = (m*m*x0 + m*y0) / (m*m + 1)
                 y = m*(x - x0) + y0
-                dist = math.min(dist, math.sqrt(x*x + y*y))
+                dist = min(dist, math.sqrt(x*x + y*y))
         
         #reward the agent by -1 * dist from origin
         reward = -dist
         
         #penalize the agent by 1,000 if it exits the state bounds
         if xf < self.stateBounds[0] or xf > self.stateBounds[1] or yf < self.stateBounds[0] or yf > self.stateBounds[1]:
-                reward -= 1000;
+                reward -= 1000
         
         #finally, convert to float32 to play nice with pytorch
-        reward = reward.astype('float32')
+        # reward = reward.astype('float32')
         
         #finish if we are within 0.01 microns of the goal
         done = done or (dist < 0.01)
                 
-        next_state = self.states
+        next_state = np.concatenate((self.states[0], 
+                                    self.states[1], 
+                                    self.states[2], 
+                                    self.states[3]), axis=None)
 
-        info = None
+        info = {}
     
         #return state, reward, done, next state
         # return self.states, reward, done, newState 
 
-        # cmb return observation, reward, done, info --------------------------------------------------------
         return next_state, reward, done, info 
     
     def reset(self):
@@ -181,7 +196,7 @@ class SimpleParticle(gym.Env):
         self.states[0:2] *= 0.4 #start within 40% of the origin
                 
         # Convert to a 32 bit float to play nice with the pytorch tensors
-        self.states = self.states.astype('float32')
+        # self.states = self.states.astype('float32')
         self.currentStep = 0
 
         # Visualization
@@ -193,12 +208,9 @@ class SimpleParticle(gym.Env):
                                 self.states[1], 
                                 self.states[2], 
                                 self.states[3]), axis=None)
+        print (state)
+        
         return state
-
-    def _next_observation(self):
-        #observe the current state of the particles
-        obs = self.states;
-        return obs
 
     #update particle states based on the current action & dynamics
     def _take_action(self, action):
