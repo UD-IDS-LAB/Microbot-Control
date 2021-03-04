@@ -10,13 +10,18 @@ from gym import spaces
 
 import numpy as np
 import math
-
+import random
+import time
+import matplotlib.pyplot as plt
+from math import radians, degrees
+from collections import deque
 
 #material for plotting
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from utils import *
 
 # env_closer = closer.Closer()
 low = np.array([-10, -10, -5, -5]) # state lower limit
@@ -106,15 +111,21 @@ class SimpleParticle(gym.Env):
         self.dwellTime = dwellTime
         self.maxSteps = maxSteps
         
+        self.on_goal = 0 # To check how many timesteps the particle is in a goal threshold
+        self.time_step_i = 0
+        self.time_steps = 1000
+        self.episode = 1
+
+        self.log = logger()
+        self.log.add_log('scores')
+        self.log.add_log('avg_loss')
+        self.scores = []                        # list containing scores from each episode
+        self.scores_window = deque(maxlen=100)  # last 100 scores
+        self.score = 0 
+
         #action space is 4 discrete values (right, up, left, down)
         self.action_space = spaces.Discrete(ACTION_SIZE)
         
-        #observation space is 4 x numParticles
-        # self.observation_space = spaces.Box(
-        #                          np.array([stateBounds[0], stateBounds[2]]), #LB
-        #                          np.array([stateBounds[1], stateBounds[3]]), #UB
-        #                          dtype=np.float32)
-
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
     def _next_observation(self):
@@ -147,31 +158,43 @@ class SimpleParticle(gym.Env):
         dy = yf - y0
         
         #first, we can assume cost = distance from final position to origin
-        dist = np.linalg.norm(self.states[0:2])
+        # dist = np.linalg.norm(self.states[0:2])
+        # Distance from the origin
+        dist = np.sqrt( (xf-0)*(xf-0) + (yf-0)*(yf-0) )
+
+        # Passing through the Goal
         #check if we are passing by the origin (so we could be closer)
-        if xf*x0 < 0 or yf*y0 < 0:
-            if dx == 0: #moving only vertically
-                dist = abs(x0)
-            if dy == 0: #moving only horizontally
-                dist= abs(y0)
-            if dx != 0 and dy != 0: #moving at an angle
-                m = dy / dx
-                x = (m*m*x0 + m*y0) / (m*m + 1)
-                y = m*(x - x0) + y0
-                dist = min(dist, math.sqrt(x*x + y*y))
+        # if xf*x0 < 0 or yf*y0 < 0:
+        #     if dx == 0: #moving only vertically
+        #         dist = abs(x0)
+        #     if dy == 0: #moving only horizontally
+        #         dist= abs(y0)
+        #     if dx != 0 and dy != 0: #moving at an angle
+        #         m = dy / dx
+        #         x = (m*m*x0 + m*y0) / (m*m + 1)
+        #         y = m*(x - x0) + y0
+        #         dist = min(dist, math.sqrt(x*x + y*y))
         
         #reward the agent by -1 * dist from origin
-        reward = -dist
+        reward = -1 * dist
         
         #penalize the agent by 1,000 if it exits the state bounds
         if xf < self.stateBounds[0] or xf > self.stateBounds[1] or yf < self.stateBounds[0] or yf > self.stateBounds[1]:
-                reward -= 1000
+                reward -= 1000.00
         
         #finally, convert to float32 to play nice with pytorch
         # reward = reward.astype('float32')
         
         #finish if we are within 0.01 microns of the goal
-        done = done or (dist < 0.01)
+        # done = done or (dist < 0.01)
+        
+        # Checking if the microbot is within tolerance Circle
+        if (dist <= 0.01):
+            self.on_goal += 1
+            if (self.on_goal > 5):
+                done = True
+
+        
                 
         next_state = np.concatenate((self.states[0], 
                                     self.states[1], 
@@ -179,9 +202,22 @@ class SimpleParticle(gym.Env):
                                     self.states[3]), axis=None)
 
         info = {}
-    
-        #return state, reward, done, next state
-        # return self.states, reward, done, newState 
+
+        self.time_step_i = self.time_step_i + 1
+        self.score += reward
+        #print("Episode : ", self.episode, " time_step_i : ", self.time_step_i)
+
+        if (self.time_step_i >= self.time_steps):
+            self.episode = self.episode + 1
+            self.scores_window.append(self.score)
+            self.scores.append(self.score)
+            self.log.add_item('scores', self.score)
+            self.score = 0
+            self.reset()
+            print('\rEpisode {}\tAverage Score: {:.2f}'.format(self.episode, np.mean(self.scores_window)), end="")
+            if self.episode % 10 == 0:
+                print('\rEpisode {}\tAverage Score: {:.2f}'.format(self.episode, np.mean(self.scores_window)))
+            self.time_step_i = 0
 
         return next_state, reward, done, info 
     
